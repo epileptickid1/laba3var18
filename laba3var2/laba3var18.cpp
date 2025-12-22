@@ -3,104 +3,114 @@
 #include <latch>
 #include <syncstream>
 #include <vector>
+#include <functional>
+#include <windows.h>
 
 using namespace std;
 
 
-void f(char x, int i) {
-    osyncstream out(cout);
-    out << "from set " << x << " did action " << i << ".\n";
+const int A_COUNT = 8;
+const int B_COUNT = 5;
+const int C_COUNT = 5;
+const int D_COUNT = 5;
+const int E_COUNT = 5;
+const int F_COUNT = 7;
+const int G_COUNT = 4;
+const int H_COUNT = 4;
+const int I_COUNT = 5;
+const int J_COUNT = 9;
+
+const int NT = 5;
+
+
+void f(char task_name, int action_num, osyncstream& out) {
+    out << "from set " << task_name
+        << " did action " << action_num << ".\n";
+    out.emit();
 }
 
-
-constexpr int A = 8;
-constexpr int B = 5;
-constexpr int C = 5;
-constexpr int D = 5;
-constexpr int E = 5;
-constexpr int F = 7;
-constexpr int G = 4;
-constexpr int H = 4;
-constexpr int I = 5;
-constexpr int J = 9;
+void run_task(char name, int count, osyncstream& out) {
+    for (int i = 1; i <= count; ++i)
+        f(name, i, out);
+}
 
 int main() {
-    {
-        osyncstream out(cout);
-        out << "calc start.\n";
-    }
+    
+    SetConsoleOutputCP(CP_UTF8);
+    osyncstream out(cout);
+    out << "calc start.\n";
+    out.emit();
 
     
-    latch done_a(1);
-    latch done_bc(1);
-    latch done_d(1);
+    latch latch_a(1);     
+    latch latch_bc(2);     
+    latch latch_d(1);      
+    latch latch_final(6);
 
-    
-    thread t1([&]() {
-        for (int i = 1; i <= A; ++i)
-            f('a', i);
-        done_a.count_down();
+    auto t1 = [&](stop_token) {
+        run_task('a', A_COUNT, out);
+        latch_a.count_down();
 
-        done_a.wait();
-        for (int i = 1; i <= E; ++i)
-            f('e', i);
-        });
+        latch_a.wait();
+        run_task('e', E_COUNT, out);
+        latch_final.count_down();
+        };
 
    
-    thread t2([&]() {
-        for (int i = 1; i <= B; ++i)
-            f('b', i);
-        done_bc.count_down(); 
+    auto t2 = [&](stop_token) {
+        run_task('b', B_COUNT, out);
+        latch_bc.count_down();
 
-        done_bc.wait();
-        for (int i = 1; i <= G; ++i)
-            f('g', i);
-        });
-
-    
-    thread t3([&]() {
-        for (int i = 1; i <= C; ++i)
-            f('c', i);
-        done_bc.count_down(); 
-
-        done_bc.wait();
-        for (int i = 1; i <= H; ++i)
-            f('h', i);
-        });
+        latch_bc.wait();
+        run_task('g', G_COUNT, out);
+        latch_final.count_down();
+        };
 
    
-    thread t4([&]() {
-        for (int i = 1; i <= D; ++i)
-            f('d', i);
-        done_d.count_down();
+    auto t3 = [&](stop_token) {
+        run_task('c', C_COUNT, out);
+        latch_bc.count_down();
 
-        done_d.wait();
-        for (int i = 1; i <= I; ++i)
-            f('i', i);
-        });
+        latch_bc.wait();
+        run_task('h', H_COUNT, out);
+        latch_final.count_down();
+        };
 
-    
-    thread t5([&]() {
-        done_a.wait();
-        for (int i = 1; i <= F; ++i)
-            f('f', i);
+ 
+    auto t4 = [&](stop_token) {
+        run_task('d', D_COUNT, out);
+        latch_d.count_down();
 
-        done_d.wait();
-        for (int i = 1; i <= J; ++i)
-            f('j', i);
-        });
+        latch_d.wait();
+        run_task('i', I_COUNT, out);
+        latch_final.count_down();
+        };
 
-    
-    t1.join();
-    t2.join();
-    t3.join();
-    t4.join();
-    t5.join();
+   
+    auto t5 = [&](stop_token) {
+        latch_a.wait();
+        run_task('f', F_COUNT, out);
+        latch_final.count_down();
 
-    {
-        osyncstream out(cout);
-        out << "Calc end.\n";
-    }
+        latch_d.wait();
+        run_task('j', J_COUNT, out);
+        latch_final.count_down();
+        };
+
+    vector<jthread> threads;
+    threads.reserve(NT);
+
+    threads.emplace_back(t1);
+    threads.emplace_back(t2);
+    threads.emplace_back(t3);
+    threads.emplace_back(t4);
+    threads.emplace_back(t5);
+
+   
+    latch_final.wait();
+
+    out << "cacl end.\n";
+    out.emit();
 
     return 0;
 }
