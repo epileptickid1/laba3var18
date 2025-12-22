@@ -6,13 +6,13 @@
 
 using namespace std;
 
-// Заглушка дії
+
 void f(char x, int i) {
     osyncstream out(cout);
     out << "from set " << x << " did action " << i << ".\n";
 }
 
-// Кількість дій
+
 constexpr int A = 8;
 constexpr int B = 5;
 constexpr int C = 5;
